@@ -1,0 +1,3 @@
+C:/My things/Uni 7 term/course work/CourseWorkApp/build/CMakeFiles/MovieServer.dir
+C:/My things/Uni 7 term/course work/CourseWorkApp/build/CMakeFiles/ALL_BUILD.dir
+C:/My things/Uni 7 term/course work/CourseWorkApp/build/CMakeFiles/ZERO_CHECK.dir

@@ -1,0 +1,4 @@
+C:/My things/Uni 7 term/course work/CourseWorkApp/cmake-build-debug-event-trace/CMakeFiles/Server.dir
+C:/My things/Uni 7 term/course work/CourseWorkApp/cmake-build-debug-event-trace/CMakeFiles/Client.dir
+C:/My things/Uni 7 term/course work/CourseWorkApp/cmake-build-debug-event-trace/CMakeFiles/edit_cache.dir
+C:/My things/Uni 7 term/course work/CourseWorkApp/cmake-build-debug-event-trace/CMakeFiles/rebuild_cache.dir

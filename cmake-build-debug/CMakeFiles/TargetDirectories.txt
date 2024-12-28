@@ -1,0 +1,4 @@
+C:/My things/Uni 7 term/course work/CourseWorkApp/cmake-build-debug/CMakeFiles/Server.dir
+C:/My things/Uni 7 term/course work/CourseWorkApp/cmake-build-debug/CMakeFiles/Client.dir
+C:/My things/Uni 7 term/course work/CourseWorkApp/cmake-build-debug/CMakeFiles/edit_cache.dir
+C:/My things/Uni 7 term/course work/CourseWorkApp/cmake-build-debug/CMakeFiles/rebuild_cache.dir

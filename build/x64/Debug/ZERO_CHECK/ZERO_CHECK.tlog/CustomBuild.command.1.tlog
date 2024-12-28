@@ -1,0 +1,10 @@
+^C:\MY THINGS\UNI 7 TERM\COURSE WORK\COURSEWORKAPP\BUILD\CMAKEFILES\5CF4B8018D2F2814327E34E1E9C4329B\GENERATE.STAMP.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" "-SC:/My things/Uni 7 term/course work/CourseWorkApp" "-BC:/My things/Uni 7 term/course work/CourseWorkApp/build" --check-stamp-list CMakeFiles/generate.stamp.list --vs-solution-file "C:/My things/Uni 7 term/course work/CourseWorkApp/build/MovieServer.sln"
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
