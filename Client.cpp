@@ -37,10 +37,9 @@ void startClient() {
     std::string response;
     int bytesReceived;
 
-    // Чтение всех данных из сокета
     while ((bytesReceived = recv(clientSocket, buffer, sizeof(buffer) - 1, 0)) > 0) {
-        buffer[bytesReceived] = '\0'; // Завершаем строку
-        response += buffer;          // Добавляем данные в полный ответ
+        buffer[bytesReceived] = '\0';
+        response += buffer;
     }
 
     if (!response.empty()) {
