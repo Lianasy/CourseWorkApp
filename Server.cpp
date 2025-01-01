@@ -47,15 +47,42 @@ struct Movie {
  * This class maps keywords and attributes (e.g., genres, language, title) to
  * sets of movie IDs, allowing fast and flexible search operations.
  */
+#include <string>
+#include <vector>
+#include <unordered_map>
+#include <unordered_set>
+#include <mutex>
+#include <algorithm>
+#include <sstream>
+
 class InvertedIndex {
-    std::unordered_map<std::string, std::unordered_set<int>> index;
-    std::mutex mtx;
+private:
+    std::vector<std::unordered_map<std::string, std::unordered_set<int>>> shards;
+    std::vector<std::mutex> shardMutexes;
+    size_t shardCount;
+
+    /**
+     * @brief Get the shard index for a given key.
+     * @param key The key to hash for determining the shard.
+     * @return The index of the shard.
+     */
+    size_t getShardIndex(const std::string& key) const {
+        std::hash<std::string> hasher;
+        return hasher(key) % shardCount;
+    }
 
 public:
     /**
-     * @brief Converts a string to lowercase.
-     *
-     * @param str The input string to convert.
+     * @brief Constructor to initialize the inverted index.
+     * @param numShards The number of shards to create.
+     */
+    InvertedIndex(size_t numShards) : shardCount(numShards), shardMutexes(numShards) {
+        shards.resize(numShards);
+    }
+
+    /**
+     * @brief Convert a string to lowercase.
+     * @param str The input string.
      * @return A lowercase version of the input string.
      */
     static std::string toLower(const std::string &str) {
@@ -65,10 +92,9 @@ public:
     }
 
     /**
-     * @brief Cleans a word by removing punctuation and leading/trailing spaces.
-     *
-     * @param word The input word to clean.
-     * @return A cleaned version of the word.
+     * @brief Clean a word by removing punctuation and leading/trailing spaces.
+     * @param word The input word.
+     * @return The cleaned word.
      */
     static std::string cleanWord(const std::string &word) {
         std::string clean = word;
@@ -80,29 +106,26 @@ public:
     }
 
     /**
-     * @brief Adds a movie ID to the index under a specific keyword.
-     *
-     * @param key The keyword associated with the movie.
-     * @param movieId The ID of the movie to add.
+     * @brief Add a movie ID to the index under a specific key.
+     * @param key The key for indexing.
+     * @param movieId The movie ID to add.
      */
-    void addToIndex(const std::string &key, int movieId) {
-        std::lock_guard<std::mutex> lock(mtx);
-        index[key].insert(movieId);
+    void addToIndex(const std::string& key, int movieId) {
+        size_t shardIndex = getShardIndex(key);
+        std::lock_guard<std::mutex> lock(shardMutexes[shardIndex]);
+        shards[shardIndex][key].insert(movieId);
     }
 
     /**
-     * @brief Indexes a movie by its attributes.
-     *
-     * Creates index entries for genres, year, language, title, and overview.
-     *
-     * @param id The ID of the movie.
-     * @param movie The movie object to index.
+     * @brief Index a movie by its attributes.
+     * @param id The movie ID.
+     * @param movie The movie object.
      */
     void addMovie(int id, const Movie &movie) {
         for (const auto& genre : movie.genres) {
             std::istringstream stream(genre);
             std::string word;
-            while (stream >> word) { // Разбиваем жанр на слова
+            while (stream >> word) {
                 addToIndex("genre_" + toLower(word), id);
             }
         }
@@ -128,42 +151,43 @@ public:
     }
 
     /**
-     * @brief Searches the index by category and value.
-     *
+     * @brief Search the index by category and value.
      * @param category The category to search (e.g., "genre").
      * @param value The specific value within the category (e.g., "Action").
      * @return A set of movie IDs matching the query.
      */
-    std::unordered_set<int> searchByCategory(const std::string &category, const std::string &value) {
-        std::lock_guard<std::mutex> lock(mtx);
+    std::unordered_set<int> searchByCategory(const std::string& category, const std::string& value) {
+        std::unordered_set<int> results;
         std::string key = category + "_" + toLower(value);
-        if (index.find(key) != index.end()) {
-            return index[key];
+
+        size_t shardIndex = getShardIndex(key);
+        std::lock_guard<std::mutex> lock(shardMutexes[shardIndex]);
+        if (shards[shardIndex].find(key) != shards[shardIndex].end()) {
+            results = shards[shardIndex][key];
         }
-        return {};
+        return results;
     }
 
     /**
-     * @brief Searches the index using multiple keywords.
-     *
-     * Combines results across categories (e.g., title, overview, genres) for all keywords.
-     *
+     * @brief Search the index using multiple keywords.
      * @param keys A vector of keywords to search for.
      * @return A set of movie IDs matching all keywords.
      */
     std::unordered_set<int> searchByKeywords(const std::vector<std::string> &keys) {
-        std::lock_guard<std::mutex> lock(mtx);
         std::unordered_set<int> currentResults;
         bool isFirst = true;
 
-        for (const auto &key: keys) {
+        for (const auto &key : keys) {
             std::string cleanedKey = toLower(cleanWord(key));
             std::unordered_set<int> keyResults;
 
-            for (const std::string &category: {"title_", "overview_", "genre_", "language_", "year_", "rating_"}) {
+            size_t shardIndex = getShardIndex(cleanedKey);
+            std::lock_guard<std::mutex> lock(shardMutexes[shardIndex]);
+
+            for (const std::string &category : {"title_", "overview_", "genre_", "language_", "year_", "rating_"}) {
                 std::string fullKey = category + cleanedKey;
-                if (index.find(fullKey) != index.end()) {
-                    keyResults.insert(index[fullKey].begin(), index[fullKey].end());
+                if (shards[shardIndex].find(fullKey) != shards[shardIndex].end()) {
+                    keyResults.insert(shards[shardIndex][fullKey].begin(), shards[shardIndex][fullKey].end());
                 }
             }
 
@@ -172,7 +196,7 @@ public:
                 isFirst = false;
             } else {
                 std::unordered_set<int> intersection;
-                for (int id: currentResults) {
+                for (int id : currentResults) {
                     if (keyResults.find(id) != keyResults.end()) {
                         intersection.insert(id);
                     }
@@ -188,18 +212,15 @@ public:
         return currentResults;
     }
 
-    std::unordered_set<int>
-
     /**
-     * @brief Finds the intersection of two sets of movie IDs.
-     *
+     * @brief Compute the intersection of two result sets.
      * @param baseResults The base set of results.
      * @param additionalResults The additional set of results.
-     * @return A set containing the intersection of both input sets.
+     * @return A set containing the intersection of the two input sets.
      */
-    intersectResults(const std::unordered_set<int> &baseResults, const std::unordered_set<int> &additionalResults) {
+    std::unordered_set<int> intersectResults(const std::unordered_set<int> &baseResults, const std::unordered_set<int> &additionalResults) {
         std::unordered_set<int> intersection;
-        for (int id: baseResults) {
+        for (int id : baseResults) {
             if (additionalResults.find(id) != additionalResults.end()) {
                 intersection.insert(id);
             }
@@ -208,33 +229,25 @@ public:
     }
 
     /**
-     * @brief Provides access to the raw index data.
-     *
-     * @return A constant reference to the index.
-     */
-    const std::unordered_map<std::string, std::unordered_set<int>> &getIndexData() const {
-        return index;
-    }
-
-    /**
-     * @brief Clears all data from the index.
+     * @brief Clear all data from the index.
      */
     void clear() {
-        std::lock_guard<std::mutex> lock(mtx);
-        index.clear();
+        for (size_t i = 0; i < shardCount; ++i) {
+            std::lock_guard<std::mutex> lock(shardMutexes[i]);
+            shards[i].clear();
+        }
     }
 
     /**
-     * @brief Locks the index and provides thread-safe access.
-     *
-     * @return A lock guard for the index mutex.
+     * @brief Provide access to the raw index data.
+     * @return A constant reference to the index.
      */
-    std::lock_guard<std::mutex> lockIndex() {
-        return std::lock_guard<std::mutex>(mtx);
+    const std::vector<std::unordered_map<std::string, std::unordered_set<int>>> &getIndexData() const {
+        return shards;
     }
 };
 
-InvertedIndex invertedIndex;
+InvertedIndex invertedIndex(8);
 std::vector<Movie> movies;
 std::unordered_set<std::string> genres, languages;
 std::set<int> years;
@@ -562,6 +575,8 @@ void handleClient(SOCKET clientSocket) {
             std::istringstream kwStream(params["keywords"]);
             std::string keyword;
             std::vector<std::string> keywords;
+
+            // Process keywords: split and clean
             while (std::getline(kwStream, keyword, '+')) {
                 keyword = InvertedIndex::toLower(InvertedIndex::cleanWord(keyword));
                 if (!keyword.empty()) {
@@ -569,15 +584,24 @@ void handleClient(SOCKET clientSocket) {
                 }
             }
 
+            // Search for each keyword in the index
             for (const auto &word: keywords) {
                 std::unordered_set<int> wordResults;
+
                 for (const std::string &category: {"title_", "overview_", "genre_", "language_", "year_", "rating_"}) {
                     std::string fullKey = category + word;
-                    if (invertedIndex.getIndexData().find(fullKey) != invertedIndex.getIndexData().end()) {
-                        wordResults.insert(invertedIndex.getIndexData().at(fullKey).begin(),
-                                           invertedIndex.getIndexData().at(fullKey).end());
+
+                    // Iterate over all shards
+                    for (size_t shardIndex = 0; shardIndex < invertedIndex.getIndexData().size(); ++shardIndex) {
+                        const auto &shard = invertedIndex.getIndexData()[shardIndex];
+                        auto it = shard.find(fullKey);
+                        if (it != shard.end()) {
+                            wordResults.insert(it->second.begin(), it->second.end());
+                        }
                     }
                 }
+
+                // Combine results with intersection
                 if (results.empty()) {
                     results = wordResults;
                 } else {
@@ -899,7 +923,6 @@ public:
  * @param filePath The path to the movie data file (CSV format).
  * @param intervalMinutes The time interval (in minutes) between updates.
  */
-
 void updateIndexPeriodically(const std::string &filePath, int intervalMinutes) {
     // Start a detached thread for periodic updates.
     std::thread([filePath, intervalMinutes]() {
